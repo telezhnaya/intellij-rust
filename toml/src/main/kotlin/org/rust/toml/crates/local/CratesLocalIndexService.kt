@@ -21,6 +21,8 @@ import com.intellij.openapi.vfs.newvfs.BulkFileListener
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent
 import com.intellij.openapi.vfs.newvfs.events.VFilePropertyChangeEvent
 import com.intellij.util.io.*
+import com.vdurmont.semver4j.Semver
+import com.vdurmont.semver4j.SemverException
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.api.errors.GitAPIException
 import org.eclipse.jgit.lib.ObjectId
@@ -211,7 +213,7 @@ class CratesLocalIndexService : PersistentStateComponent<CratesLocalIndexState>,
                     if (line.isBlank()) return@forEachLine
 
                     try {
-                        versions.add(CargoRegistryCrateVersion.fromJson(line))
+                        versions.add(CargoRegistryCrateVersion.fromJson(line) ?: return@forEachLine)
                     } catch (e: Exception) {
                         LOG.warn("Failed to parse JSON from ${treeWalk.pathString}, line ${line}: ${e.message}")
                     }
@@ -279,8 +281,20 @@ class CratesLocalIndexService : PersistentStateComponent<CratesLocalIndexState>,
 private fun VFileEvent.pathEndsWith(suffix: String): Boolean =
     path.endsWith(suffix) || (this is VFilePropertyChangeEvent && oldPath.endsWith(suffix))
 
-data class CargoRegistryCrate(val versions: List<CargoRegistryCrateVersion>)
-data class CargoRegistryCrateVersion(val version: String, val isYanked: Boolean, val features: List<String>) {
+data class CargoRegistryCrate(val versions: List<CargoRegistryCrateVersion>) {
+    val latestVersion: CargoRegistryCrateVersion?
+        get() = versions.max()
+}
+
+data class CargoRegistryCrateVersion private constructor(
+    val version: Semver,
+    val isYanked: Boolean,
+    val features: List<String>
+) : Comparable<CargoRegistryCrateVersion> {
+    override fun compareTo(other: CargoRegistryCrateVersion): Int {
+        return this.version.compareTo(other.version)
+    }
+
     companion object {
         private data class ParsedVersion(
             val name: String,
@@ -289,28 +303,33 @@ data class CargoRegistryCrateVersion(val version: String, val isYanked: Boolean,
             val features: HashMap<String, List<String>>
         )
 
-        fun fromJson(json: String): CargoRegistryCrateVersion {
+        fun fromJson(json: String): CargoRegistryCrateVersion? {
             val parsedVersion = Gson().fromJson(json, ParsedVersion::class.java)
 
-            return CargoRegistryCrateVersion(
+            return create(
                 parsedVersion.vers,
                 parsedVersion.yanked,
                 parsedVersion.features.map { it.key }
             )
         }
+
+        fun create(version: String, isYanked: Boolean, features: List<String>): CargoRegistryCrateVersion? {
+            val semverVersion = try {
+                Semver(version, Semver.SemverType.NPM)
+            } catch (e: SemverException) {
+                return null
+            }
+
+            return CargoRegistryCrateVersion(semverVersion, isYanked, features)
+        }
     }
 }
-
-val CargoRegistryCrate.lastVersion: String?
-    // TODO: Last version sometimes can differ from latest major
-    //  (e.g. if developer uploaded a patch to previous major)
-    get() = versions.lastOrNull()?.version
 
 private object CrateExternalizer : DataExternalizer<CargoRegistryCrate> {
     override fun save(out: DataOutput, value: CargoRegistryCrate) {
         out.writeInt(value.versions.size)
         value.versions.forEach { version ->
-            out.writeUTF(version.version)
+            out.writeUTF(version.version.value)
             out.writeBoolean(version.isYanked)
 
             out.writeInt(version.features.size)
@@ -332,7 +351,11 @@ private object CrateExternalizer : DataExternalizer<CargoRegistryCrate> {
             repeat(featuresSize) {
                 features.add(inp.readUTF())
             }
-            versions.add(CargoRegistryCrateVersion(version, yanked, features))
+
+            val cargoRegistryCrateVersion = CargoRegistryCrateVersion.create(version, yanked, features)
+            if (cargoRegistryCrateVersion != null) {
+                versions.add(cargoRegistryCrateVersion)
+            }
         }
         return CargoRegistryCrate(versions)
     }

@@ -6,16 +6,15 @@
 package org.rust.toml.completion
 
 import com.intellij.codeInsight.completion.CompletionResultSet
+import com.intellij.codeInsight.completion.CompletionSorter
 import com.intellij.codeInsight.completion.CompletionUtil
 import com.intellij.codeInsight.completion.PrioritizedLookupElement
-import com.intellij.codeInsight.lookup.LookupElement
-import com.intellij.codeInsight.lookup.LookupElementBuilder
-import com.intellij.codeInsight.lookup.LookupElementPresentation
-import com.intellij.codeInsight.lookup.LookupElementRenderer
+import com.intellij.codeInsight.completion.impl.NegatingComparable
+import com.intellij.codeInsight.lookup.*
 import com.intellij.icons.AllIcons
+import com.vdurmont.semver4j.Semver
 import org.rust.toml.StringValueInsertionHandler
 import org.rust.toml.crates.local.CratesLocalIndexService
-import org.rust.toml.crates.local.lastVersion
 import org.toml.lang.psi.TomlKeyValue
 
 class LocalCargoTomlDependencyCompletionProvider : TomlKeyValueCompletionProviderBase() {
@@ -34,11 +33,11 @@ class LocalCargoTomlDependencyCompletionProvider : TomlKeyValueCompletionProvide
                     .withIcon(AllIcons.Nodes.PpLib)
                     .withExpensiveRenderer(object : LookupElementRenderer<LookupElement>() {
                         override fun renderElement(element: LookupElement, presentation: LookupElementPresentation) {
-                            presentation.itemText = "$crateName = \"${crate.lastVersion.orEmpty()}\""
+                            presentation.itemText = "$crateName = \"${crate.latestVersion?.version?.value.orEmpty()}\""
                         }
                     })
                     .withInsertHandler { context, _ ->
-                        context.document.insertString(context.tailOffset, " = \"${crate.lastVersion}\"")
+                        context.document.insertString(context.tailOffset, " = \"${crate.latestVersion}\"")
                         val endLineOffset = context.editor.caretModel.visualLineEnd
                         // TODO: Currently moves caret to the next line
                         context.editor.caretModel.moveToOffset(endLineOffset)
@@ -55,16 +54,15 @@ class LocalCargoTomlDependencyCompletionProvider : TomlKeyValueCompletionProvide
         val indexService = CratesLocalIndexService.getInstance()
 
         val versions = indexService.getCrate(name)?.versions ?: return
-        val elements = versions.mapIndexed { index, variant ->
-            val lookupElement = LookupElementBuilder.create(variant.version)
+        val elements = versions.map { variant ->
+            LookupElementBuilder.create(variant.version.value)
                 .withInsertHandler(StringValueInsertionHandler(keyValue))
                 .withTailText(if (variant.isYanked) " yanked" else null)
-
-            PrioritizedLookupElement.withPriority(
-                lookupElement,
-                index.toDouble()
-            )
         }
-        result.addAllElements(elements)
+
+        result.withRelevanceSorter(CompletionSorter.emptySorter().weigh(object : LookupElementWeigher("cratesVersionWeigher", true, false) {
+            override fun weigh(element: LookupElement): Comparable<Nothing> =
+                Semver(element.lookupString)
+        })).addAllElements(elements)
     }
 }
