@@ -323,13 +323,22 @@ private fun checkTypeArgumentList(holder: AnnotationHolder, args: RsTypeArgument
                 .range(child).create()
         }
     }
+
+    val assocTypeBindings = args.assocTypeBindingList
+    if (assocTypeBindings.isEmpty()) return
+    val startOfAssocTypeBindings = args.assocTypeBindingList.firstOrNull()?.textOffset ?: return
+    for (generic in args.lifetimeList + args.typeReferenceList + args.exprList) {
+        if (generic.textOffset > startOfAssocTypeBindings) {
+            holder.newAnnotation(HighlightSeverity.ERROR, "Generic arguments must come before the first constraint")
+                .range(generic).create()
+        }
+    }
 }
 
 private enum class TypeArgumentKind(private val elementClass: KClass<*>, val argumentName: String) {
     LIFETIME(RsLifetime::class, "lifetime arguments"),
     TYPE(RsTypeReference::class, "type arguments"),
-    CONST(RsExpr::class, "const arguments"),
-    ASSOC(RsAssocTypeBinding::class, "associated type bindings");
+    CONST(RsExpr::class, "const arguments");
 
     val argumentNameCapitalized: String
         get() = StringUtil.capitalize(argumentName)
