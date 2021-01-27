@@ -102,6 +102,8 @@ class CratesLocalIndexService : PersistentStateComponent<CratesLocalIndexState>,
         })
     }
 
+    fun isReady() = isReady.get()
+
     override fun getState(): CratesLocalIndexState = state
     override fun loadState(state: CratesLocalIndexState) {
         this.state = state
@@ -134,7 +136,7 @@ class CratesLocalIndexService : PersistentStateComponent<CratesLocalIndexState>,
         return crateNames
     }
 
-    private fun updateIfNeeded() {
+    fun updateIfNeeded() {
         if (state.indexedCommitHash != registryHeadCommitHash && isReady.compareAndSet(true, false)) {
             CratesLocalIndexUpdateTask(registryHeadCommitHash).queue()
         }
