@@ -257,6 +257,30 @@ class CargoGeneratedItemsResolveTest : RunConfigurationTestBase() {
     }
 
     @MinRustcVersion("1.41.0")
+    fun `test include with build script info with invalid code`() = withEnabledEvaluateBuildScriptsFeature {
+        buildProject {
+            toml("Cargo.toml", """
+                [package]
+                name = "intellij-rust-test"
+                version = "0.1.0"
+                authors = []
+
+                [dependencies]
+                code-generation-example = "0.1.0"
+            """)
+            dir("src") {
+                rust("lib.rs", """
+                    fn main() {
+                        println!("{}", code_generation_example::message());
+                                                               //^
+                        some syntax errors here
+                    }
+                """)
+            }
+        }.checkReferenceIsResolved<RsPath>("src/lib.rs")
+    }
+
+    @MinRustcVersion("1.41.0")
     fun `test do not run build-plan if build script info is enough`() = withEnabledFetchOutDirFeature {
         withEnabledEvaluateBuildScriptsFeature {
             Cargo.Testmarks.fetchBuildPlan.checkNotHit {

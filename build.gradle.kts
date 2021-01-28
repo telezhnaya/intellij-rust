@@ -148,6 +148,15 @@ allprojects {
                     include("**")
                 }
             }
+
+            // In tests `resources` directory is used instead of `sandbox`
+            processTestResources {
+                dependsOn(compileNativeCode)
+                from("${rootDir}/bin") {
+                    into("bin")
+                    include("**")
+                }
+            }
         }
     }
 
