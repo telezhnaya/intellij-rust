@@ -152,7 +152,12 @@ class Node<N, E>(
     val index: Int,
     var firstOutEdge: Edge<N, E>? = null,
     var firstInEdge: Edge<N, E>? = null
-)
+) {
+    override fun equals(other: Any?): Boolean =
+        other is Node<*, *> && index == other.index
+
+    override fun hashCode(): Int = index.hashCode()
+}
 
 class Edge<N, E>(
     val source: Node<N, E>,

@@ -88,9 +88,17 @@ class ControlFlowGraph private constructor(
         }
     }
 
-    // TODO: Implement dead code elimination
-    @Suppress("unused")
-    fun isNodeReachable(item: RsElement) = graph.depthFirstTraversal(entry).any { it.data.element == item }
+    fun collectUnreachableElements(): List<RsElement> {
+        val reachableNodes = graph.depthFirstTraversal(entry).toSet()
+        val unreachableNodes = mutableListOf<CFGNode>()
+
+        graph.forEachNode { node ->
+           if (node !in reachableNodes) {
+               unreachableNodes.add(node)
+           }
+        }
+        return unreachableNodes.mapNotNull { it.data.element }
+    }
 
     fun buildLocalIndex(): HashMap<RsElement, MutableList<CFGNode>> {
         val table = hashMapOf<RsElement, MutableList<CFGNode>>()
@@ -236,23 +244,23 @@ private class ExitPointVisitor(
 
     private fun isTailStatement(parent: PsiElement?, exprStmt: RsExprStmt) =
         (parent is RsFunction || parent is RsExpr && parent.isInTailPosition) && exprStmt.expr.type != TyNever
+}
 
-    private val RsExpr.isInTailPosition: Boolean
-        get() {
-            for (ancestor in ancestors) {
-                when (ancestor) {
-                    is RsFunction, is RsLambdaExpr -> return true
-                    is RsStmt, is RsCondition, is RsMatchArmGuard, is RsPat -> return false
-                    else -> {
-                        val parent = ancestor.parent
-                        if ((ancestor is RsExpr && parent is RsMatchExpr) || parent is RsLoopExpr)
-                            return false
-                    }
+val RsExpr.isInTailPosition: Boolean
+    get() {
+        for (ancestor in ancestors) {
+            when (ancestor) {
+                is RsFunction, is RsLambdaExpr -> return true
+                is RsStmt, is RsCondition, is RsMatchArmGuard, is RsPat -> return false
+                else -> {
+                    val parent = ancestor.parent
+                    if ((ancestor is RsExpr && parent is RsMatchExpr) || parent is RsLoopExpr)
+                        return false
                 }
             }
-            return false
         }
-}
+        return false
+    }
 
 private fun RsExpr.markNeverTypeAsExit(sink: (ExitPoint) -> Unit) {
     if (this.type == TyNever) sink(ExitPoint.DivergingExpr(this))
