@@ -16,6 +16,8 @@ import org.rust.lang.core.psi.ext.RsElement
 import org.rust.lang.core.psi.ext.RsLabeledExpression
 import org.rust.lang.core.psi.ext.ancestorStrict
 import org.rust.lang.core.types.controlFlowGraph
+import org.rust.lang.core.types.ty.TyNever
+import org.rust.lang.core.types.type
 
 class RsUnreachableCodeInspection : RsLintInspection() {
     override fun getDisplayName(): String = "Unreachable code"
@@ -49,6 +51,9 @@ class RsUnreachableCodeInspection : RsLintInspection() {
             // But partially executed elements should not be annotated as unreachable since the execution
             // actually reaches them; only some parts of such elements should be annotated instead
             fun isEntirelyUnreachable(expr: RsExpr): Boolean {
+                if (expr.type is TyNever) {
+                    return false
+                }
                 if (expr !in unreachableExprs) {
                     return false
                 }
