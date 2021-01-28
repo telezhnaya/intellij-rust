@@ -38,7 +38,7 @@ sealed class CFGNodeData(val element: RsElement? = null) : PresentableNodeData {
 
     override val text: String
         get() = when (this) {
-            is AST -> element?.cfgText()?.trim() ?: "AST"
+            is AST -> element!!.cfgText().trim()
             Entry -> "Entry"
             Exit -> "Exit"
             Termination -> "Termination"
@@ -54,6 +54,7 @@ sealed class CFGNodeData(val element: RsElement? = null) : PresentableNodeData {
             is RsLoopExpr -> "LOOP"
             is RsForExpr -> "FOR"
             is RsMatchExpr -> "MATCH"
+            is RsLambdaExpr -> "CLOSURE"
             is RsExprStmt -> expr.cfgText() + ";"
             else -> this.text
         }
